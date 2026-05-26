@@ -1,0 +1,45 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+*.local
+appsettings.Local.json
+appsettings.*.Local.json
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+*.ncrunch*
+launchSettings.json
+
+# NuGet
+*.nupkg
+packages/
+nuget.config.local
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+
+# Docker
+.dockerignore.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# JetBrains / VS Code
+.idea/
+*.iml
+.vscode/settings.json
