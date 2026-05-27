@@ -44,4 +44,4 @@ desktop.ini
 *.iml
 .vscode/settings.json
 .settings.local.json
-.claude\settings.local.json
+.claude/settings.local.json
