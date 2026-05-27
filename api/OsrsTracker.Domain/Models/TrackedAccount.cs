@@ -8,5 +8,7 @@ public class TrackedAccount
     public DateTime CreatedAt { get; set; }
     public DateTime? LastPolledAt { get; set; }
 
+    public string UserId { get; set; } = string.Empty;
+
     public ICollection<XpSnapshot> XpSnapshots { get; set; } = [];
 }

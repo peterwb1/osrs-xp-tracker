@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using OsrsTracker.Api.Data;
@@ -11,9 +12,11 @@ using OsrsTracker.Api.Data;
 namespace OsrsTracker.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260527185130_AddAuthAndOwnership")]
+    partial class AddAuthAndOwnership
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -272,8 +275,10 @@ namespace OsrsTracker.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "OsrsUsername")
+                    b.HasIndex("OsrsUsername")
                         .IsUnique();
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("TrackedAccounts");
                 });
