@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: applies dark: variants when .dark is on any ancestor */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f9fafb;
+  --bg-card: #ffffff;
+  --fg: #111827;
+}
+
+.dark {
+  --bg: #111827;
+  --bg-card: #1f2937;
+  --fg: #f9fafb;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.15s, color 0.15s;
+}
