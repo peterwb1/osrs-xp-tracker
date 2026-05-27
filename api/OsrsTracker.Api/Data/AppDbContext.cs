@@ -10,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<Skill> Skills => Set<Skill>();
     public DbSet<TrackedAccount> TrackedAccounts => Set<TrackedAccount>();
     public DbSet<XpSnapshot> XpSnapshots => Set<XpSnapshot>();
+    public DbSet<PollLog> PollLogs => Set<PollLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +29,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.HasOne<IdentityUser>()
              .WithMany()
              .HasForeignKey(a => a.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PollLog>(e =>
+        {
+            e.HasOne(p => p.TrackedAccount)
+             .WithMany(a => a.PollLogs)
+             .HasForeignKey(p => p.TrackedAccountId)
              .OnDelete(DeleteBehavior.Cascade);
         });
 

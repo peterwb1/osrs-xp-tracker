@@ -5,7 +5,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OsrsTracker.Api.Data;
 using OsrsTracker.Api.Hiscores;
+using OsrsTracker.Api.Services;
 using OsrsTracker.Domain.Hiscores;
+using Polly;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,7 +16,9 @@ builder.Services.AddControllers();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-builder.Services.AddHttpClient<IHiscoresClient, HiscoresClient>();
+builder.Services.AddHttpClient<IHiscoresClient, HiscoresClient>()
+    .AddTransientHttpErrorPolicy(p =>
+        p.WaitAndRetryAsync(3, retry => TimeSpan.FromSeconds(retry * 2)));
 
 builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
 {
@@ -45,6 +49,9 @@ builder.Services.AddAuthentication(options =>
             Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
     };
 });
+
+builder.Services.Configure<PollingOptions>(builder.Configuration.GetSection("Polling"));
+builder.Services.AddHostedService<PollingService>();
 
 // CORS for Vite dev server (week 4+ frontend)
 builder.Services.AddCors(options =>

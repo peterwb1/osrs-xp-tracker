@@ -11,4 +11,5 @@ public class TrackedAccount
     public string UserId { get; set; } = string.Empty;
 
     public ICollection<XpSnapshot> XpSnapshots { get; set; } = [];
+    public ICollection<PollLog> PollLogs { get; set; } = [];
 }
