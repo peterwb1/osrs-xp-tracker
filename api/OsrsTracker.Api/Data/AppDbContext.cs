@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using OsrsTracker.Domain.Models;
 
 namespace OsrsTracker.Api.Data;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbContext<IdentityUser>(options)
 {
     public DbSet<Skill> Skills => Set<Skill>();
     public DbSet<TrackedAccount> TrackedAccounts => Set<TrackedAccount>();
@@ -11,6 +13,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder); // required — sets up Identity tables
+
         modelBuilder.Entity<XpSnapshot>(e =>
         {
             e.HasIndex(s => new { s.TrackedAccountId, s.SkillId, s.CapturedAt });
@@ -20,7 +24,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.Property(a => a.OsrsUsername).HasMaxLength(12);
             e.Property(a => a.DisplayName).HasMaxLength(50);
-            e.HasIndex(a => a.OsrsUsername).IsUnique();
+            e.HasIndex(a => new { a.UserId, a.OsrsUsername }).IsUnique();
+            e.HasOne<IdentityUser>()
+             .WithMany()
+             .HasForeignKey(a => a.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Skill>(e =>
