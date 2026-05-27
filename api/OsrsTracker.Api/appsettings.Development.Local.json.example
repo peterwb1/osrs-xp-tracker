@@ -1,0 +1,6 @@
+{
+  "Jwt": {
+    "Key": "replace-with-a-32-char-minimum-secret-key",
+    "Issuer": "osrs-tracker-dev"
+  }
+}

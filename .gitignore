@@ -44,4 +44,7 @@ desktop.ini
 *.iml
 .vscode/settings.json
 .settings.local.json
-.claude/settings.local.json
+
+# Claude Code / AI agent skill directories
+.claude/
+.agents/
