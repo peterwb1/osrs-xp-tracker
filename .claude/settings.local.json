@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(where npx *)",
+      "PowerShell([System.Environment]::GetEnvironmentVariable\\(\"GITHUB_TOKEN\", \"User\"\\))",
+      "Bash(where gh *)",
+      "Bash(gh auth *)",
+      "Bash(npx -y @modelcontextprotocol/server-github)",
+      "PowerShell($env:GITHUB_TOKEN)",
+      "PowerShell($token = [System.Environment]::GetEnvironmentVariable\\(\"GITHUB_TOKEN\", \"User\"\\); Write-Output $token)",
+      "Bash(rm -rf \"/c/Users/peter/.git\" && echo \"Done\" && test -d \"/c/Users/peter/.git\" && echo \"STILL EXISTS\" || echo \"Confirmed removed\")",
+      "Read(//c/Users/peter/.claude//**)",
+      "Read(//c/Users/peter/.claude/**)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Claude\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\Claude\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\AnthropicClaude\" -ErrorAction SilentlyContinue)",
+      "Bash(npm install *)",
+      "Bash(where github-mcp-server *)",
+      "Bash(npx github-mcp-server *)",
+      "Read(//c/Users/peter/AppData/Roaming/npm//**)",
+      "Bash(cat \"/c/Users/peter/AppData/Roaming/Code/User/settings.json\" 2>&1 | grep -i \"claude\\\\|mcp\" | head -20)",
+      "Read(//c/Users/peter/AppData/Roaming/Code/User/**)",
+      "PowerShell($proc = Start-Process -FilePath \"C:\\\\Users\\\\peter\\\\AppData\\\\Roaming\\\\npm\\\\mcp-server-github.cmd\" -NoNewWindow -PassThru -RedirectStandardOutput \"$env:TEMP\\\\mcp-out.txt\" -RedirectStandardError \"$env:TEMP\\\\mcp-err.txt\"; Start-Sleep -Seconds 3; $proc.Kill\\(\\); Get-Content \"$env:TEMP\\\\mcp-out.txt\" -ErrorAction SilentlyContinue; Write-Host \"---STDERR---\"; Get-Content \"$env:TEMP\\\\mcp-err.txt\" -ErrorAction SilentlyContinue)",
+      "Bash(cat /c/Users/peter/.claude.json 2>/dev/null || echo \"FILE NOT FOUND\")",
+      "Read(//c/Users/peter/**)",
+      "PowerShell([System.Environment]::GetEnvironmentVariable\\(\"GITHUB_PERSONAL_ACCESS_TOKEN\", \"User\"\\))",
+      "mcp__github__create_issue"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\peter\\.git"
+    ]
+  }
+}
