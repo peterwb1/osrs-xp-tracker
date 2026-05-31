@@ -3,10 +3,14 @@
 import { useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { queryKeys } from '@/lib/queryKeys';
+import { skillIconUrl } from '@/lib/skills';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { Spinner } from '@/components/Spinner';
 
 interface SkillSnapshot {
   skillId: number;
@@ -27,7 +31,7 @@ export default function AccountDetailPage() {
   }, [isAuthenticated, router]);
 
   const { data: skills, isLoading, isError } = useQuery<SkillSnapshot[]>({
-    queryKey: ['skills', id],
+    queryKey: queryKeys.skills(id),
     queryFn: () => api.get(`/api/accounts/${id}/skills`).then((r) => r.data),
     enabled: isAuthenticated && !!id,
   });
@@ -47,9 +51,12 @@ export default function AccountDetailPage() {
           <ThemeToggle />
         </div>
 
-        <h1 className="mb-6 text-2xl font-bold text-gray-900 dark:text-white">Skills</h1>
+        <h1 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">Skills</h1>
+        <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
+          Click a skill to view XP history
+        </p>
 
-        {isLoading && <p className="text-gray-500 dark:text-gray-400">Loading…</p>}
+        {isLoading && <Spinner />}
         {isError && (
           <p className="text-red-600 dark:text-red-400">
             Failed to load skills. This account may not exist.
@@ -69,8 +76,25 @@ export default function AccountDetailPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {skills.map((skill) => (
-                  <tr key={skill.skillId} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{skill.skillName}</td>
+                  <tr
+                    key={skill.skillId}
+                    className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                    onClick={() => router.push(`/accounts/${id}/skills/${skill.skillId}`)}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Image
+                          src={skillIconUrl(skill.skillName)}
+                          width={20}
+                          height={20}
+                          alt=""
+                          unoptimized
+                        />
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {skill.skillName}
+                        </span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
                       {skill.level ?? '—'}
                     </td>

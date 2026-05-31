@@ -4,9 +4,12 @@ import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { queryKeys } from '@/lib/queryKeys';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { Spinner } from '@/components/Spinner';
 
 interface Account {
   id: number;
@@ -14,6 +17,11 @@ interface Account {
   displayName: string;
   createdAt: string;
   lastPolledAt: string | null;
+}
+
+function relativeTime(dateStr: string | null): string {
+  if (!dateStr) return 'Never';
+  return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
 }
 
 export default function AccountsPage() {
@@ -30,7 +38,7 @@ export default function AccountsPage() {
   }, [isAuthenticated, router]);
 
   const { data: accounts, isLoading } = useQuery<Account[]>({
-    queryKey: ['accounts'],
+    queryKey: queryKeys.accounts(),
     queryFn: () => api.get('/api/accounts').then((r) => r.data),
     enabled: isAuthenticated,
   });
@@ -39,7 +47,7 @@ export default function AccountsPage() {
     mutationFn: (body: { osrsUsername: string; displayName: string }) =>
       api.post('/api/accounts', body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
       setUsername('');
       setDisplayName('');
       setAddError('');
@@ -53,7 +61,11 @@ export default function AccountsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/api/accounts/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+    onSuccess: (_data, id) => {
+      // Prefix-invalidate: clears accounts list + all cached data for this account
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts() });
+      queryClient.removeQueries({ queryKey: ['accounts', id] });
+    },
   });
 
   async function handleAdd(e: FormEvent) {
@@ -115,7 +127,7 @@ export default function AccountsPage() {
 
         {/* Account list */}
         {isLoading ? (
-          <p className="text-gray-500 dark:text-gray-400">Loading…</p>
+          <Spinner />
         ) : accounts?.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400">No accounts tracked yet. Add one above.</p>
         ) : (
@@ -133,10 +145,7 @@ export default function AccountsPage() {
                     {account.displayName}
                   </Link>
                   <p className="text-xs text-gray-400 dark:text-gray-500">
-                    {account.osrsUsername} · Last polled:{' '}
-                    {account.lastPolledAt
-                      ? new Date(account.lastPolledAt).toLocaleString()
-                      : 'never'}
+                    {account.osrsUsername} · Last polled: {relativeTime(account.lastPolledAt)}
                   </p>
                 </div>
                 <button
