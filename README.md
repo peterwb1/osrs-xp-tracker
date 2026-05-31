@@ -26,10 +26,9 @@ That's it. No goals, no projections, no calculators, no collection log, no socia
 - xUnit + FluentAssertions for tests
 ### Frontend
  
-- React 18 + TypeScript + Vite
-- Tailwind
-- TanStack Query for API calls
-- React Router
+- Next.js 16 + TypeScript
+- Tailwind v4
+- TanStack Query for API calls + caching
 - Recharts for the XP-over-time chart
 ### Infrastructure
  
@@ -174,13 +173,19 @@ Before calling the foundation done, it should have:
  
 ## Getting started
  
-*To be filled in once the project is bootstrapped (Weekend 1).*
- 
 ```bash
-# Planned local setup
-git clone <repo>
+git clone https://github.com/peterwb1/osrs-xp-tracker.git
 cd osrs-xp-tracker
-docker compose up
+docker compose up --build
+```
+ 
+Open [http://localhost:3000](http://localhost:3000). Register an account, add an OSRS username, and watch XP history build up over time.
+ 
+The first `--build` takes a few minutes (downloading base images, compiling .NET, building Next.js). Subsequent `docker compose up` runs are fast.
+ 
+To wipe the database and start fresh:
+```bash
+docker compose down -v
 ```
  
 ## Project structure
@@ -193,7 +198,7 @@ osrs-xp-tracker/
 │   ├── OsrsTracker.Api/
 │   ├── OsrsTracker.Domain/
 │   └── OsrsTracker.Tests/
-├── web/                    # React + Vite frontend
+├── web/                    # Next.js frontend
 ├── docker-compose.yml
 └── .github/workflows/      # CI/CD
 ```
