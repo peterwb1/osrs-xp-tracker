@@ -53,13 +53,18 @@ builder.Services.AddAuthentication(options =>
 builder.Services.Configure<PollingOptions>(builder.Configuration.GetSection("Polling"));
 builder.Services.AddHostedService<PollingService>();
 
-// CORS for Vite dev server (week 4+ frontend)
+builder.Services.AddHealthChecks();
+
+var frontendUrl = builder.Configuration["Frontend:Url"];
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("DevFrontend", policy =>
-        policy.WithOrigins("http://localhost:3000")
-              .AllowAnyHeader()
-              .AllowAnyMethod());
+    options.AddPolicy("Frontend", policy =>
+    {
+        var origins = new List<string> { "http://localhost:3000" };
+        if (!string.IsNullOrEmpty(frontendUrl))
+            origins.Add(frontendUrl);
+        policy.WithOrigins(origins.ToArray()).AllowAnyHeader().AllowAnyMethod();
+    });
 });
 
 var app = builder.Build();
@@ -71,9 +76,10 @@ using (var scope = app.Services.CreateScope())
     await SkillSeeder.SeedAsync(db);
 }
 
-app.UseCors("DevFrontend");
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapHealthChecks("/health");
 app.MapControllers();
 
 app.Run();
