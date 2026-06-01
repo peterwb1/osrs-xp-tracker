@@ -30,7 +30,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full antialiased">
         <Providers>{children}</Providers>
-        <footer className="py-3 text-center text-xs text-gray-400 dark:text-gray-600">
+        <footer className="fixed bottom-2 right-3 text-xs text-gray-400 dark:text-gray-500 select-none pointer-events-none">
           v{process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev'}
         </footer>
       </body>
