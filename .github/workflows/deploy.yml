@@ -117,7 +117,7 @@ jobs:
           git checkout -b $BRANCH
           git add web/package.json api/OsrsTracker.Api/OsrsTracker.Api.csproj
           git commit -m "chore: bump version to $NEW_VERSION"
-          git push origin $BRANCH
+          git push origin $BRANCH --force
 
           gh pr create \
             --title "chore: bump version to $NEW_VERSION" \
