@@ -15,6 +15,7 @@ jobs:
   deploy-api:
     name: Build and Deploy API
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
 
     steps:
       - uses: actions/checkout@v5
@@ -54,6 +55,7 @@ jobs:
   deploy-frontend:
     name: Build and Deploy Frontend
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
 
     steps:
       - uses: actions/checkout@v5
