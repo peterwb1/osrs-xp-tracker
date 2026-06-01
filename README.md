@@ -33,11 +33,10 @@ That's it. No goals, no projections, no calculators, no collection log, no socia
 ### Infrastructure
  
 - Docker + docker-compose locally
-- Azure Container Apps for the API
-- Azure Database for PostgreSQL (flexible server, burstable tier)
-- Azure Static Web Apps for the frontend
-- GitHub Actions for CI/CD
-- Azure Container Registry for built images
+- Azure Container Apps (API + frontend)
+- Azure Database for PostgreSQL Flexible Server (burstable B1ms)
+- GitHub Container Registry (GHCR) for Docker images
+- GitHub Actions for CI/CD (Week 8)
 ## Data model
  
 Five tables.
@@ -171,7 +170,13 @@ Before calling the foundation done, it should have:
 - Domain (optional): ~£10/year
 **Realistic monthly cost: £0 for the first year, ~£15/month after.**
  
-## Getting started
+## Live demo
+ 
+**[https://osrs-tracker-frontend.wittyrock-979e7344.uksouth.azurecontainerapps.io](https://osrs-tracker-frontend.wittyrock-979e7344.uksouth.azurecontainerapps.io)**
+ 
+Register an account, add your OSRS username, and the background poller will build up XP history every 6 hours.
+ 
+## Getting started (local)
  
 ```bash
 git clone https://github.com/peterwb1/osrs-xp-tracker.git
@@ -179,7 +184,7 @@ cd osrs-xp-tracker
 docker compose up --build
 ```
  
-Open [http://localhost:3000](http://localhost:3000). Register an account, add an OSRS username, and watch XP history build up over time.
+Open [http://localhost:3000](http://localhost:3000).
  
 The first `--build` takes a few minutes (downloading base images, compiling .NET, building Next.js). Subsequent `docker compose up` runs are fast.
  
@@ -187,6 +192,20 @@ To wipe the database and start fresh:
 ```bash
 docker compose down -v
 ```
+ 
+### Environment variables
+ 
+The API reads the following at runtime. For local development these are set in `docker-compose.yml`. For production they are set as Azure Container Apps environment variables / secrets.
+ 
+| Variable | Description |
+|---|---|
+| `ConnectionStrings__Default` | PostgreSQL connection string |
+| `Jwt__Key` | Secret key for signing JWTs (32+ chars) |
+| `Jwt__Issuer` | JWT issuer identifier |
+| `Frontend__Url` | Production frontend origin (for CORS) |
+| `ASPNETCORE_ENVIRONMENT` | `Development` or `Production` |
+ 
+Copy `api/OsrsTracker.Api/appsettings.Development.Local.json.example` to `appsettings.Development.Local.json` and fill in the JWT values to run the API outside Docker.
  
 ## Project structure
  
