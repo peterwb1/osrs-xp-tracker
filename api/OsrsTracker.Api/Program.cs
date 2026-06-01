@@ -76,10 +76,15 @@ using (var scope = app.Services.CreateScope())
     await SkillSeeder.SeedAsync(db);
 }
 
+var version = typeof(Program).Assembly
+    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+    ?.InformationalVersion ?? "unknown";
+
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
+app.MapGet("/api/info", () => new { version, environment = app.Environment.EnvironmentName });
 app.MapControllers();
 
 app.Run();
