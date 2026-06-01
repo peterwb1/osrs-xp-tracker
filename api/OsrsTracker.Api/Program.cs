@@ -76,9 +76,7 @@ using (var scope = app.Services.CreateScope())
     await SkillSeeder.SeedAsync(db);
 }
 
-var version = typeof(Program).Assembly
-    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
-    ?.InformationalVersion ?? "unknown";
+var version = typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "unknown";
 
 app.UseCors("Frontend");
 app.UseAuthentication();
