@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OsrsTracker.Api.Data;
 using OsrsTracker.Api.Dtos;
+using OsrsTracker.Api.Services;
 using OsrsTracker.Domain.Hiscores;
 using OsrsTracker.Domain.Models;
 using OsrsTracker.Domain.Stats;
@@ -190,6 +191,40 @@ public class AccountsController(AppDbContext db, IHiscoresClient hiscores) : Con
             .Select(g => g.OrderByDescending(s => s.CapturedAt).First())
             .ToListAsync(ct))
         .ToDictionary(s => s.SkillId);
+
+    // How soon after the last poll a manual refresh is allowed, to respect the OSRS API.
+    private static readonly TimeSpan RefreshCooldown = TimeSpan.FromMinutes(5);
+
+    [HttpPost("{id}/refresh")]
+    public async Task<IActionResult> Refresh(
+        int id, [FromServices] IAccountPoller poller, CancellationToken ct)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        var account = await db.TrackedAccounts
+            .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId, ct);
+        if (account is null) return NotFound();
+
+        // Cooldown: a manual refresh also resets LastPolledAt, which pushes the
+        // next automatic poll back by a full interval — so the two never collide.
+        if (account.LastPolledAt is { } last)
+        {
+            var elapsed = DateTime.UtcNow - last;
+            if (elapsed < RefreshCooldown)
+            {
+                var retryAfter = (int)Math.Ceiling((RefreshCooldown - elapsed).TotalSeconds);
+                Response.Headers.RetryAfter = retryAfter.ToString();
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { error = "Recently refreshed. Try again shortly.", retryAfter });
+            }
+        }
+
+        var result = await poller.PollAsync(account, ct);
+        if (!result.Success)
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { error = "Couldn't reach the OSRS Hiscores. Try again shortly." });
+
+        return Ok(new { polledAt = account.LastPolledAt, skillCount = result.SkillCount });
+    }
 
     [HttpPost]
     public async Task<IActionResult> AddAccount([FromBody] AddAccountRequest request, CancellationToken ct)

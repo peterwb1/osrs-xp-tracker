@@ -51,6 +51,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.Configure<PollingOptions>(builder.Configuration.GetSection("Polling"));
+builder.Services.AddScoped<IAccountPoller, AccountPoller>();
 builder.Services.AddHostedService<PollingService>();
 
 builder.Services.AddHealthChecks();

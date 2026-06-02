@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OsrsTracker.Api.Data;
-using OsrsTracker.Domain.Hiscores;
 using OsrsTracker.Domain.Models;
 
 namespace OsrsTracker.Api.Services;
@@ -37,7 +36,7 @@ public class PollingService(
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var hiscores = scope.ServiceProvider.GetRequiredService<IHiscoresClient>();
+        var poller = scope.ServiceProvider.GetRequiredService<IAccountPoller>();
 
         var cutoff = DateTime.UtcNow.AddHours(-options.Value.IntervalHours);
         // IsDue() can't be used here — EF Core can't translate arbitrary C# method calls
@@ -57,7 +56,7 @@ public class PollingService(
         foreach (var account in due)
         {
             if (ct.IsCancellationRequested) break;
-            await PollAccountAsync(db, hiscores, account, ct);
+            await poller.PollAsync(account, ct);
 
             try
             {
@@ -67,71 +66,6 @@ public class PollingService(
             {
                 break;
             }
-        }
-    }
-
-    private async Task PollAccountAsync(
-        AppDbContext db,
-        IHiscoresClient hiscores,
-        TrackedAccount account,
-        CancellationToken ct)
-    {
-        try
-        {
-            var stats = await hiscores.GetStatsAsync(account.OsrsUsername, ct);
-
-            var skills = await db.Skills.OrderBy(s => s.DisplayOrder).ToListAsync(ct);
-            var now = DateTime.UtcNow;
-
-            var snapshots = skills
-                .Where(s => s.DisplayOrder < stats.Count)
-                .Select(s =>
-                {
-                    var entry = stats[s.DisplayOrder];
-                    return new XpSnapshot
-                    {
-                        TrackedAccountId = account.Id,
-                        SkillId = s.Id,
-                        Xp = entry.Xp,
-                        Level = entry.Level,
-                        Rank = entry.Rank,
-                        CapturedAt = now
-                    };
-                })
-                .ToList();
-
-            db.XpSnapshots.AddRange(snapshots);
-            account.LastPolledAt = now;
-            db.PollLogs.Add(new PollLog
-            {
-                TrackedAccountId = account.Id,
-                AttemptedAt = now,
-                Success = true
-            });
-
-            await db.SaveChangesAsync(ct);
-
-            logger.LogInformation(
-                "Polled {Username}: {SkillCount} skills saved.",
-                account.OsrsUsername, snapshots.Count);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            var now = DateTime.UtcNow;
-            db.PollLogs.Add(new PollLog
-            {
-                TrackedAccountId = account.Id,
-                AttemptedAt = now,
-                Success = false,
-                ErrorMessage = ex.Message
-            });
-
-            try { await db.SaveChangesAsync(ct); }
-            catch { /* if DB is also down, just move on */ }
-
-            logger.LogWarning(
-                "Failed to poll {Username}: {Error}",
-                account.OsrsUsername, ex.Message);
         }
     }
 
