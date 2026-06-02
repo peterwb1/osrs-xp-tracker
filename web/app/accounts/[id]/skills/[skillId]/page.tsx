@@ -1,32 +1,18 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useQuery } from '@tanstack/react-query';
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-} from 'recharts';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { queryKeys } from '@/lib/queryKeys';
 import { skillIconUrl } from '@/lib/skills';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Spinner } from '@/components/Spinner';
-
-interface HistoryPoint {
-  capturedAt: string;
-  xp: number;
-  level: number;
-  rank: number;
-}
+import { Segmented } from '@/components/Segmented';
+import { XpHistoryChart, metricSeries, type Metric, type HistoryPoint } from '@/components/XpHistoryChart';
 
 interface SkillSnapshot {
   skillId: number;
@@ -37,10 +23,25 @@ interface SkillSnapshot {
   rank: number | null;
 }
 
+const RANGE_OPTIONS = [
+  { label: '7d', value: 7 },
+  { label: '30d', value: 30 },
+  { label: '90d', value: 90 },
+  { label: 'All', value: 36500 }, // ~100 years; effectively unbounded
+];
+
+const METRIC_OPTIONS: { label: string; value: Metric }[] = [
+  { label: 'XP', value: 'xp' },
+  { label: 'Rank', value: 'rank' },
+];
+
 export default function SkillHistoryPage() {
   const { isAuthenticated } = useAuth();
   const router = useRouter();
   const { id, skillId } = useParams<{ id: string; skillId: string }>();
+
+  const [days, setDays] = useState(30);
+  const [metric, setMetric] = useState<Metric>('xp');
 
   useEffect(() => {
     if (!isAuthenticated) router.push('/login');
@@ -56,21 +57,19 @@ export default function SkillHistoryPage() {
   const skill = skills?.find((s) => s.skillId === Number(skillId));
 
   const { data: history, isLoading, isError } = useQuery<HistoryPoint[]>({
-    queryKey: queryKeys.skillHistory(id, skillId),
+    queryKey: queryKeys.skillHistory(id, skillId, days),
     queryFn: () =>
       api
-        .get(`/api/accounts/${id}/skills/${skillId}/history?days=30`)
+        .get(`/api/accounts/${id}/skills/${skillId}/history?days=${days}`)
         .then((r) => r.data),
     enabled: isAuthenticated && !!id && !!skillId,
+    placeholderData: keepPreviousData, // keep the chart visible while switching range
   });
 
-  const chartData = history?.map((s) => ({
-    date: new Date(s.capturedAt).toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-    }),
-    xp: s.xp,
-  }));
+  const series = history ? metricSeries(history, metric) : [];
+  // Rank exists in the data but every point is unranked (-1) for this skill.
+  const rankUnavailable =
+    metric === 'rank' && !!history && history.length >= 2 && series.length < 2;
 
   if (!isAuthenticated) return null;
 
@@ -98,7 +97,7 @@ export default function SkillHistoryPage() {
             />
           )}
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {skill?.skillName ?? 'Skill'} — XP History
+            {skill?.skillName ?? 'Skill'} — History
           </h1>
         </div>
 
@@ -108,55 +107,46 @@ export default function SkillHistoryPage() {
           <p className="text-red-600 dark:text-red-400">Failed to load history.</p>
         )}
 
-        {!isLoading && !isError && chartData && chartData.length < 2 && (
-          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-800">
-            <p className="text-gray-500 dark:text-gray-400">
-              No history yet — this account needs at least two polls to show a chart.
-            </p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              The poller runs every 6 hours. Check back later.
-            </p>
-          </div>
-        )}
+        {!isLoading && !isError && history && (
+          <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <Segmented
+                options={METRIC_OPTIONS}
+                value={metric}
+                onChange={setMetric}
+                aria-label="Metric"
+              />
+              <Segmented
+                options={RANGE_OPTIONS}
+                value={days}
+                onChange={setDays}
+                aria-label="Time range"
+              />
+            </div>
 
-        {chartData && chartData.length >= 2 && (
-          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <p className="mb-4 text-xs text-gray-400 dark:text-gray-500">Last 30 days</p>
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: '#9ca3af' }}
-                  stroke="#9ca3af"
-                />
-                <YAxis
-                  tickFormatter={(v: number) => (v / 1_000_000).toFixed(1) + 'M'}
-                  tick={{ fontSize: 11, fill: '#9ca3af' }}
-                  stroke="#9ca3af"
-                  width={52}
-                />
-                <Tooltip
-                  formatter={(v) => [typeof v === 'number' ? v.toLocaleString() : v, 'XP']}
-                  labelStyle={{ color: '#f9fafb' }}
-                  contentStyle={{
-                    backgroundColor: '#1f2937',
-                    border: '1px solid #374151',
-                    borderRadius: '8px',
-                    color: '#f9fafb',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="xp"
-                  stroke="#6366f1"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+            {series.length >= 2 ? (
+              <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <XpHistoryChart data={series} metric={metric} />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-200 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-800">
+                {rankUnavailable ? (
+                  <p className="text-gray-500 dark:text-gray-400">
+                    Not ranked in this skill yet — no rank history to show.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-gray-500 dark:text-gray-400">
+                      No history yet — this account needs at least two polls to show a chart.
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      The poller runs every 6 hours. Check back later.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {/* Current snapshot stats */}
