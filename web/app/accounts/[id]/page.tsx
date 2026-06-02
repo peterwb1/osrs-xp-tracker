@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { queryKeys } from '@/lib/queryKeys';
@@ -20,6 +21,16 @@ interface SkillSnapshot {
   xp: number | null;
   level: number | null;
   rank: number | null;
+}
+
+// Mirrors the server-side cooldown so the button disables before a 429.
+const COOLDOWN_MS = 5 * 60 * 1000;
+
+function formatCountdown(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 export default function AccountDetailPage() {
@@ -43,6 +54,38 @@ export default function AccountDetailPage() {
     enabled: isAuthenticated && !!id,
   });
 
+  const queryClient = useQueryClient();
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  // Tick every second so the cooldown countdown updates and the button
+  // re-enables on its own once the window passes.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const lastPolledMs = summary?.lastPolledAt ? new Date(summary.lastPolledAt).getTime() : 0;
+  const cooldownLeftMs = lastPolledMs ? Math.max(0, COOLDOWN_MS - (now - lastPolledMs)) : 0;
+  const onCooldown = cooldownLeftMs > 0;
+
+  const refresh = useMutation({
+    mutationFn: () => api.post(`/api/accounts/${id}/refresh`),
+    onSuccess: () => {
+      setRefreshError(null);
+      // Refetch this account's skills, summary and history; plus the list's last-polled time.
+      queryClient.invalidateQueries({ queryKey: ['accounts', id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts(), exact: true });
+    },
+    onError: (err) => {
+      setRefreshError(
+        isAxiosError(err) && err.response?.status === 429
+          ? 'Recently refreshed — please wait a moment.'
+          : "Couldn't refresh right now. Try again shortly."
+      );
+    },
+  });
+
   if (!isAuthenticated) return null;
 
   return (
@@ -58,9 +101,27 @@ export default function AccountDetailPage() {
           <ThemeToggle />
         </div>
 
-        <h1 className="mb-1 text-2xl font-bold text-gray-900 dark:text-white">
-          {summary?.displayName ?? 'Account'}
-        </h1>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            {summary?.displayName ?? 'Account'}
+          </h1>
+          <button
+            type="button"
+            onClick={() => refresh.mutate()}
+            disabled={refresh.isPending || onCooldown}
+            title={onCooldown ? 'Recently refreshed' : 'Check the hiscores now'}
+            className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {refresh.isPending
+              ? 'Refreshing…'
+              : onCooldown
+                ? `Wait ${formatCountdown(cooldownLeftMs)}`
+                : 'Refresh'}
+          </button>
+        </div>
+        {refreshError && (
+          <p className="mb-2 text-sm text-red-600 dark:text-red-400">{refreshError}</p>
+        )}
         <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
           Click a skill to view its history
         </p>

@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using OsrsTracker.Api.Data;
 
 namespace OsrsTracker.Tests.Integration;
 
@@ -184,7 +186,62 @@ public class ReadEndpointsTests
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // ── POST /api/accounts/{id}/refresh ───────────────────────────────────────
+
+    [Fact]
+    public async Task Refresh_WithinCooldown_Returns429()
+    {
+        var token = await RegisterAndGetToken("refresh-cooldown@example.com");
+        SetToken(token);
+
+        // AddAccount sets LastPolledAt to now, so an immediate refresh is on cooldown.
+        var id = await AddAccountAsync("Zezima");
+
+        var response = await _client.PostAsync($"/api/accounts/{id}/refresh", null);
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        response.Headers.Should().ContainKey("Retry-After");
+    }
+
+    [Fact]
+    public async Task Refresh_AfterCooldown_PollsAndReturnsOk()
+    {
+        var token = await RegisterAndGetToken("refresh-ok@example.com");
+        SetToken(token);
+
+        var id = await AddAccountAsync("Zezima");
+        BackdateLastPolled(id, TimeSpan.FromMinutes(-10));
+
+        var response = await _client.PostAsync($"/api/accounts/{id}/refresh", null);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("skillCount").GetInt32().Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task Refresh_OtherUsersAccount_ReturnsNotFound()
+    {
+        var tokenA = await RegisterAndGetToken("refresh-a@example.com");
+        var tokenB = await RegisterAndGetToken("refresh-b@example.com");
+
+        SetToken(tokenA);
+        var id = await AddAccountAsync("Zezima");
+
+        SetToken(tokenB);
+        var response = await _client.PostAsync($"/api/accounts/{id}/refresh", null);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void BackdateLastPolled(int accountId, TimeSpan offset)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var account = db.TrackedAccounts.First(a => a.Id == accountId);
+        account.LastPolledAt = DateTime.UtcNow.Add(offset);
+        db.SaveChanges();
+    }
 
     private async Task<string> RegisterAndGetToken(string email)
     {
