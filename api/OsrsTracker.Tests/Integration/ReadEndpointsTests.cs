@@ -146,6 +146,44 @@ public class ReadEndpointsTests
         history.GetArrayLength().Should().BeGreaterThan(0);
     }
 
+    // ── GET /api/accounts/{id}/summary ───────────────────────────────────────
+
+    [Fact]
+    public async Task GetSummary_ReturnsDashboardStats()
+    {
+        var token = await RegisterAndGetToken("summary-user@example.com");
+        SetToken(token);
+
+        var id = await AddAccountAsync("Zezima");
+
+        var response = await _client.GetAsync($"/api/accounts/{id}/summary");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("displayName").GetString().Should().Be("Zezima");
+        // FakeHiscoresClient reports every skill at level 99 → combat 126, total level 99.
+        body.GetProperty("combatLevel").GetInt32().Should().Be(126);
+        body.GetProperty("totalLevel").GetInt32().Should().Be(99);
+        // A single snapshot means no measurable gains or level-ups yet.
+        body.GetProperty("xpGainedThisWeek").GetInt64().Should().Be(0);
+        body.GetProperty("fastestSkill").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetProperty("lastLevelUp").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task GetSummary_OtherUsersAccount_ReturnsNotFound()
+    {
+        var tokenA = await RegisterAndGetToken("summary-a@example.com");
+        var tokenB = await RegisterAndGetToken("summary-b@example.com");
+
+        SetToken(tokenA);
+        var id = await AddAccountAsync("Zezima");
+
+        SetToken(tokenB);
+        var response = await _client.GetAsync($"/api/accounts/{id}/summary");
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<string> RegisterAndGetToken(string email)
