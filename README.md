@@ -46,7 +46,7 @@ Five tables.
  
 - **Users** — handled by ASP.NET Identity (`Id`, `Email`, `PasswordHash`, etc.)
 - **TrackedAccounts** — `Id`, `UserId` (FK), `OsrsUsername`, `DisplayName`, `CreatedAt`, `LastPolledAt`
-- **Skills** — `Id`, `Name`, `DisplayOrder` — seeded once at startup with the 23 skills in hiscore order
+- **Skills** — `Id`, `Name`, `DisplayOrder` — seeded once at startup with 24 rows (an `Overall` aggregate plus the 23 skills) in hiscore order
 - **XpSnapshots** — `Id`, `TrackedAccountId` (FK), `SkillId` (FK), `Xp`, `Level`, `Rank`, `CapturedAt`
 - **PollLog** *(optional but useful)* — `Id`, `TrackedAccountId` (FK), `AttemptedAt`, `Success`, `ErrorMessage`
 The `XpSnapshots` table will be the biggest. Index on `(TrackedAccountId, SkillId, CapturedAt DESC)` so "show me the chart for one skill" stays fast.
@@ -59,8 +59,10 @@ The `XpSnapshots` table will be the biggest. Index on `(TrackedAccountId, SkillI
 - `POST /api/accounts` — body has `osrsUsername`, `displayName` → validates the username exists on Hiscores, creates `TrackedAccount`, takes initial snapshot
 - `GET /api/accounts` — list current user's tracked accounts
 - `DELETE /api/accounts/{id}` — remove an account
-- `GET /api/accounts/{id}/skills` — current state of all 23 skills (latest snapshot per skill)
+- `GET /api/accounts/{id}/skills` — current state of all skills (latest snapshot per skill)
 - `GET /api/accounts/{id}/skills/{skillId}/history?days=30` — snapshots over a period for the chart
+- `GET /health` — liveness + database connectivity (used by Container Apps probes)
+- `GET /api/info` — app version and environment
 ## Background poller
  
 One `IHostedService`. Runs on a loop:
@@ -110,7 +112,7 @@ Eight focused weekends. Each ends with something demonstrable.
  
 - `GET /api/accounts/{id}/skills` (current state)
 - `GET /api/accounts/{id}/skills/{skillId}/history` (chart data)
-- Vite + React + TS + Tailwind project alongside the API
+- Next.js + TypeScript + Tailwind project alongside the API
 - Auth flow in the frontend: login → JWT in localStorage → axios/fetch interceptor
 - Skeleton pages: Login, Register, Account List, Account Detail
 **Goal:** you can log in via the React app and see an empty account list.
@@ -119,7 +121,7 @@ Eight focused weekends. Each ends with something demonstrable.
  
 - Account list page with "Add account" form
 - Account detail page: table of 23 skills with current level/XP/rank
-- Per-skill chart with Recharts (XP over time)
+- Per-skill chart with Recharts (XP and rank over time, with selectable time ranges)
 - "Last polled at" display
 - TanStack Query for caching and refetching
 **Goal:** real, usable UI. You can add your own RSN and see your skills.
@@ -127,7 +129,7 @@ Eight focused weekends. Each ends with something demonstrable.
 ### Weekend 6 — Dockerise everything
  
 - Multi-stage Dockerfile for the API
-- Dockerfile for the frontend (build → serve via nginx)
+- Dockerfile for the frontend (multi-stage build → Next.js standalone server on Node)
 - `docker-compose.yml` with API + Postgres + frontend
 - One command starts the whole thing
 - README updated with "how to run locally"
@@ -135,20 +137,20 @@ Eight focused weekends. Each ends with something demonstrable.
  
 ### Weekend 7 — Deploy to Azure
  
-- Azure Container Registry — push the API image
+- GitHub Container Registry (GHCR) — push the API and frontend images
 - Azure Database for PostgreSQL Flexible Server — provisioned with the lowest burstable tier
-- Azure Container Apps — deploy the API image, wire env vars (connection string, JWT secret) via secrets
-- Azure Static Web Apps — deploy the frontend
+- Azure Container Apps — deploy both the API and frontend images, wire env vars (connection string, JWT secret) via secrets
 - One real public URL, working end-to-end
 **Goal:** you can send a friend a link, they can sign up, and it works.
  
 ### Weekend 8 — CI/CD
  
-- GitHub Actions: PR workflow runs `dotnet build` + `dotnet test` + `npm test`
-- Main branch workflow: builds Docker image, pushes to ACR, triggers Container Apps revision, deploys frontend to Static Web Apps
-- Branch protection on main requiring the checks to pass
-- A README badge showing CI status
-**Goal:** push to main → 5 minutes later → live in production. No manual steps.
+- GitHub Actions: PR workflow runs `dotnet build` + `dotnet test` (with coverage) and `npm run lint` + `npm run build`
+- Deploy workflow: builds the Docker images, pushes them to GHCR, and rolls out new Azure Container Apps revisions for both the API and frontend
+- An auto version-bump workflow opens a PR bumping the patch version on each merge; merging that PR triggers the deploy
+- Branch protection (ruleset) on main requiring the checks to pass
+- README badges showing CI + deploy status
+**Goal:** merge a release → minutes later → live in production. No manual steps.
  
 After weekend 8 the project is **done**. Don't reach for features until the foundation is genuinely solid.
  
@@ -160,16 +162,15 @@ Before calling the foundation done, it should have:
 - **A real README.** Architecture diagram, how to run locally, environment variables documented, deploy instructions.
 - **Migrations, not `dotnet ef database drop`.** New schema changes go through migrations from day one.
 - **Secrets in secret stores**, not in `appsettings.json` checked into git.
-- **Logging that's useful.** Structured logs (Serilog) so you can diagnose the inevitable production issue.
+- **Logging that's useful.** Structured logs via ASP.NET Core's built-in `ILogger` so you can diagnose the inevitable production issue.
 - **Health checks.** `/health` endpoint returning DB connectivity. Container Apps uses this.
 - **A rate-limited Hiscores client** with retry on 503, not "fire-and-hope".
 - **CORS configured properly** — not `AllowAnyOrigin()` in production.
 ## Budget
  
-- Azure Container Apps: free tier covers casual use comfortably
+- Azure Container Apps (API + frontend): free tier covers casual use comfortably
 - PostgreSQL Burstable B1ms: free for 12 months on a new Azure account, then ~£10/month
-- Static Web Apps: free tier
-- Container Registry: ~£4/month for Basic tier (or use GitHub Container Registry for free)
+- GitHub Container Registry (GHCR): free for the images this project pushes
 - Domain (optional): ~£10/year
 **Realistic monthly cost: £0 for the first year, ~£15/month after.**
  
@@ -211,16 +212,22 @@ The API reads the following at runtime. For local development these are set in `
 Copy `api/OsrsTracker.Api/appsettings.Development.Local.json.example` to `appsettings.Development.Local.json` and fill in the JWT values to run the API outside Docker.
  
 ## Project structure
- 
-*To be filled in once the project is bootstrapped.*
- 
+
 ```
 osrs-xp-tracker/
-├── api/                    # ASP.NET Core Web API
-│   ├── OsrsTracker.Api/
-│   ├── OsrsTracker.Domain/
-│   └── OsrsTracker.Tests/
-├── web/                    # Next.js frontend
+├── api/                       # ASP.NET Core Web API (.NET 8)
+│   ├── OsrsTracker.Api/       #   controllers, services (polling), data, DTOs, Program.cs
+│   ├── OsrsTracker.Domain/    #   entities, hiscores parser (no framework dependencies)
+│   ├── OsrsTracker.Tests/     #   xUnit unit + integration tests
+│   └── OsrsTracker.sln
+├── web/                       # Next.js 16 frontend (App Router, TypeScript)
+│   ├── app/                   #   routes: login, register, accounts, accounts/[id], compare
+│   ├── components/            #   charts, theme toggle, reusable UI
+│   ├── lib/                   #   api client, auth, query keys, helpers
+│   └── Dockerfile
+├── docs/                      # deployment guide, local dev guide, future-feature designs
+│   └── features/
+├── scripts/                   # version-bump helper
 ├── docker-compose.yml
-└── .github/workflows/      # CI/CD
+└── .github/workflows/         # pr.yml (CI), deploy.yml, bump.yml
 ```
