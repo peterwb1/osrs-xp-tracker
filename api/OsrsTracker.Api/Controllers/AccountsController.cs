@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OsrsTracker.Api.Data;
 using OsrsTracker.Api.Dtos;
+using OsrsTracker.Api.Services;
 using OsrsTracker.Domain.Hiscores;
 using OsrsTracker.Domain.Models;
+using OsrsTracker.Domain.Stats;
 
 namespace OsrsTracker.Api.Controllers;
 
@@ -83,6 +85,145 @@ public class AccountsController(AppDbContext db, IHiscoresClient hiscores) : Con
             .ToListAsync(ct);
 
         return Ok(history);
+    }
+
+    [HttpGet("{id}/summary")]
+    public async Task<IActionResult> GetSummary(int id, CancellationToken ct)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        var account = await db.TrackedAccounts
+            .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId, ct);
+        if (account is null) return NotFound();
+
+        var skillNameById = await db.Skills.ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var overallSkillId = skillNameById.First(kv => kv.Value == "Overall").Key;
+
+        // Latest snapshot per skill = current values.
+        var latest = await db.XpSnapshots
+            .Where(s => s.TrackedAccountId == id)
+            .GroupBy(s => s.SkillId)
+            .Select(g => g.OrderByDescending(s => s.CapturedAt).First())
+            .ToListAsync(ct);
+
+        if (latest.Count == 0)
+            return Ok(new AccountDashboardDto(account.DisplayName, account.OsrsUsername,
+                account.LastPolledAt, 0, 0, 0, 0, 0, null, null));
+
+        var currentByName = latest.ToDictionary(s => skillNameById[s.SkillId]);
+        int Lvl(string name) => currentByName.TryGetValue(name, out var s) ? s.Level : 1;
+
+        currentByName.TryGetValue("Overall", out var overall);
+        var totalLevel = overall?.Level ?? 0;
+        var totalXp = overall?.Xp ?? 0;
+
+        var combat = CombatLevel.Calculate(
+            attack: Lvl("Attack"), strength: Lvl("Strength"), defence: Lvl("Defence"),
+            hitpoints: Lvl("Hitpoints"), ranged: Lvl("Ranged"), prayer: Lvl("Prayer"),
+            magic: Lvl("Magic"));
+
+        // Earliest snapshot per skill — the fallback baseline for accounts that
+        // haven't been tracked for the full comparison window yet.
+        var earliestBySkillId = (await db.XpSnapshots
+                .Where(s => s.TrackedAccountId == id)
+                .GroupBy(s => s.SkillId)
+                .Select(g => g.OrderBy(s => s.CapturedAt).First())
+                .ToListAsync(ct))
+            .ToDictionary(s => s.SkillId);
+
+        var now = DateTime.UtcNow;
+        var weekBaseline = await BaselineAtAsync(id, now.AddDays(-7), ct);
+        var dayBaseline = await BaselineAtAsync(id, now.AddDays(-1), ct);
+
+        long BaselineXp(Dictionary<int, XpSnapshot> baseline, int skillId) =>
+            (baseline.TryGetValue(skillId, out var b)
+                ? b
+                : earliestBySkillId.GetValueOrDefault(skillId))?.Xp ?? 0;
+
+        var xpGainedThisWeek = Math.Max(0, totalXp - BaselineXp(weekBaseline, overallSkillId));
+        var xpGainedToday = Math.Max(0, totalXp - BaselineXp(dayBaseline, overallSkillId));
+
+        // Fastest-growing skill over the week (excluding the Overall aggregate).
+        DashboardSkillGainDto? fastest = null;
+        foreach (var snap in latest)
+        {
+            if (snap.SkillId == overallSkillId) continue;
+            var gained = snap.Xp - BaselineXp(weekBaseline, snap.SkillId);
+            if (gained > 0 && (fastest is null || gained > fastest.XpGained))
+                fastest = new DashboardSkillGainDto(skillNameById[snap.SkillId], gained);
+        }
+
+        // Most recent level-up across skills in the last 30 days. Levels only go
+        // up, so a level increase between two consecutive snapshots is a level-up.
+        var levelWindow = now.AddDays(-30);
+        var levelRows = await db.XpSnapshots
+            .Where(s => s.TrackedAccountId == id && s.SkillId != overallSkillId && s.CapturedAt >= levelWindow)
+            .OrderBy(s => s.CapturedAt)
+            .Select(s => new { s.SkillId, s.Level, s.CapturedAt })
+            .ToListAsync(ct);
+
+        DashboardLevelUpDto? lastLevelUp = null;
+        foreach (var grp in levelRows.GroupBy(r => r.SkillId))
+        {
+            var ordered = grp.OrderBy(r => r.CapturedAt).ToList();
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                if (ordered[i].Level > ordered[i - 1].Level &&
+                    (lastLevelUp is null || ordered[i].CapturedAt > lastLevelUp.At))
+                {
+                    lastLevelUp = new DashboardLevelUpDto(
+                        skillNameById[grp.Key], ordered[i].Level, ordered[i].CapturedAt);
+                }
+            }
+        }
+
+        return Ok(new AccountDashboardDto(
+            account.DisplayName, account.OsrsUsername, account.LastPolledAt,
+            totalLevel, totalXp, combat, xpGainedToday, xpGainedThisWeek,
+            fastest, lastLevelUp));
+    }
+
+    // Latest snapshot per skill at or before <paramref name="cutoff"/>.
+    private async Task<Dictionary<int, XpSnapshot>> BaselineAtAsync(
+        int accountId, DateTime cutoff, CancellationToken ct) =>
+        (await db.XpSnapshots
+            .Where(s => s.TrackedAccountId == accountId && s.CapturedAt <= cutoff)
+            .GroupBy(s => s.SkillId)
+            .Select(g => g.OrderByDescending(s => s.CapturedAt).First())
+            .ToListAsync(ct))
+        .ToDictionary(s => s.SkillId);
+
+    // How soon after the last poll a manual refresh is allowed, to respect the OSRS API.
+    private static readonly TimeSpan RefreshCooldown = TimeSpan.FromMinutes(5);
+
+    [HttpPost("{id}/refresh")]
+    public async Task<IActionResult> Refresh(
+        int id, [FromServices] IAccountPoller poller, CancellationToken ct)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        var account = await db.TrackedAccounts
+            .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId, ct);
+        if (account is null) return NotFound();
+
+        // Cooldown: a manual refresh also resets LastPolledAt, which pushes the
+        // next automatic poll back by a full interval — so the two never collide.
+        if (account.LastPolledAt is { } last)
+        {
+            var elapsed = DateTime.UtcNow - last;
+            if (elapsed < RefreshCooldown)
+            {
+                var retryAfter = (int)Math.Ceiling((RefreshCooldown - elapsed).TotalSeconds);
+                Response.Headers.RetryAfter = retryAfter.ToString();
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { error = "Recently refreshed. Try again shortly.", retryAfter });
+            }
+        }
+
+        var result = await poller.PollAsync(account, ct);
+        if (!result.Success)
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { error = "Couldn't reach the OSRS Hiscores. Try again shortly." });
+
+        return Ok(new { polledAt = account.LastPolledAt, skillCount = result.SkillCount });
     }
 
     [HttpPost]
