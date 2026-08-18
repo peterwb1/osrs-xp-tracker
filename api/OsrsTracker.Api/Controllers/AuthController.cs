@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 
 namespace OsrsTracker.Api.Controllers;
@@ -12,6 +13,7 @@ namespace OsrsTracker.Api.Controllers;
 [Route("api/auth")]
 public class AuthController(UserManager<IdentityUser> userManager, IConfiguration config) : ControllerBase
 {
+    [EnableRateLimiting("auth")]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] AuthRequest request)
     {
@@ -24,6 +26,7 @@ public class AuthController(UserManager<IdentityUser> userManager, IConfiguratio
         return Ok(new { token = BuildToken(user) });
     }
 
+    [EnableRateLimiting("auth")]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] AuthRequest request)
     {
