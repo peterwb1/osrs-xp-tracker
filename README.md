@@ -176,7 +176,7 @@ Before calling the foundation done, it should have:
  
 ## Live demo
  
-**[https://osrs-tracker-frontend.wittyrock-979e7344.uksouth.azurecontainerapps.io](https://osrs-tracker-frontend.wittyrock-979e7344.uksouth.azurecontainerapps.io)**
+**[https://osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io](https://osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io)**
  
 Register an account, add your OSRS username, and the background poller will build up XP history every 6 hours.
  
