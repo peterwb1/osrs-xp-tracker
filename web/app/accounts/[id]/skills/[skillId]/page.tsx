@@ -75,7 +75,7 @@ export default function SkillHistoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="mx-auto max-w-3xl p-6">
+      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <div className="mb-6 flex items-center justify-between">
           <Link
             href={`/accounts/${id}`}
