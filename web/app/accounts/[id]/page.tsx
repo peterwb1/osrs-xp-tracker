@@ -90,7 +90,7 @@ export default function AccountDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="mx-auto max-w-6xl p-6">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <div className="mb-6 flex items-center justify-between">
           <Link
             href="/accounts"
@@ -138,49 +138,51 @@ export default function AccountDetailPage() {
             {/* Skills first in the DOM so it stays the priority on mobile */}
             <section className="lg:col-span-2">
               <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-                    <tr>
-                      <th className="px-4 py-3">Skill</th>
-                      <th className="px-4 py-3 text-right">Level</th>
-                      <th className="px-4 py-3 text-right">XP</th>
-                      <th className="px-4 py-3 text-right">Rank</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {skills.map((skill) => (
-                      <tr
-                        key={skill.skillId}
-                        className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
-                        onClick={() => router.push(`/accounts/${id}/skills/${skill.skillId}`)}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Image
-                              src={skillIconUrl(skill.skillName)}
-                              width={20}
-                              height={20}
-                              alt=""
-                              unoptimized
-                            />
-                            <span className="font-medium text-gray-900 dark:text-white">
-                              {skill.skillName}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                          {skill.level ?? '—'}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
-                          {skill.xp != null ? skill.xp.toLocaleString() : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-400 dark:text-gray-500">
-                          {skill.rank != null ? skill.rank.toLocaleString() : '—'}
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                      <tr>
+                        <th className="whitespace-nowrap px-3 py-3 sm:px-4">Skill</th>
+                        <th className="whitespace-nowrap px-3 py-3 text-right sm:px-4">Level</th>
+                        <th className="whitespace-nowrap px-3 py-3 text-right sm:px-4">XP</th>
+                        <th className="whitespace-nowrap px-3 py-3 text-right sm:px-4">Rank</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {skills.map((skill) => (
+                        <tr
+                          key={skill.skillId}
+                          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                          onClick={() => router.push(`/accounts/${id}/skills/${skill.skillId}`)}
+                        >
+                          <td className="whitespace-nowrap px-3 py-3 sm:px-4">
+                            <div className="flex items-center gap-2">
+                              <Image
+                                src={skillIconUrl(skill.skillName)}
+                                width={20}
+                                height={20}
+                                alt=""
+                                unoptimized
+                              />
+                              <span className="font-medium text-gray-900 dark:text-white">
+                                {skill.skillName}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right sm:px-4 tabular-nums text-gray-700 dark:text-gray-300">
+                            {skill.level ?? '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right sm:px-4 tabular-nums text-gray-700 dark:text-gray-300">
+                            {skill.xp != null ? skill.xp.toLocaleString() : '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right sm:px-4 tabular-nums text-gray-400 dark:text-gray-500">
+                            {skill.rank != null ? skill.rank.toLocaleString() : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </section>
 
