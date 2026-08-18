@@ -2,205 +2,162 @@
 
 ![CI](https://github.com/peterwb1/osrs-xp-tracker/actions/workflows/pr.yml/badge.svg)
 ![Deploy](https://github.com/peterwb1/osrs-xp-tracker/actions/workflows/deploy.yml/badge.svg)
- 
+
 A multi-user web app for tracking Old School RuneScape account XP over time. Users sign up, register their RuneScape accounts by username, and a background job polls the official Hiscores API on a schedule to build a history of XP snapshots per skill.
- 
-This is a personal learning project, deliberately scoped small so it can be **finished and properly built** rather than half-built with lots of features. The focus is on a solid foundation: real tests, real CI/CD, proper secrets management, structured logging — the unglamorous details that separate "side project" from "real service."
- 
-## Scope
- 
-A multi-user web app where:
- 
-- Anyone can sign up.
-- Each user can track one or more OSRS accounts (just their RSN).
-- A background job polls the official Hiscores every few hours and saves a snapshot of all 23+ skills per account.
-- Users can view their accounts: current levels, total XP, XP gained over time, per-skill history charts.
-That's it. No goals, no projections, no calculators, no collection log, no social features. Just: sign up → add your username → see your XP grow over time.
- 
+
+This is a personal learning project, deliberately scoped small so it can be **finished and properly built** rather than half-built with lots of features. The focus is a solid foundation: real tests, real CI/CD, proper secrets management, structured logging — the unglamorous details that separate "side project" from "real service."
+
+**Live demo:** [osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io](https://osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io)
+
+## Features
+
+**Accounts & auth**
+- Sign up / log in with email + password (JWT). Every user's accounts and data are isolated.
+- Track multiple OSRS accounts by username — validated against the official Hiscores when added.
+- Remove accounts you no longer want to track.
+
+**Tracking & history**
+- A background poller snapshots every tracked account's skills (XP, level, rank) every 6 hours.
+- A **Refresh** button polls the Hiscores on demand, with a short cooldown to stay polite to Jagex.
+- Full per-skill history is retained for charting.
+
+**Viewing your data**
+- Per-account **dashboard**: total level, combat level, total XP, XP gained today / this week, fastest-growing skill, last level-up, and time since last poll.
+- Skills table with icons showing current level, XP and rank.
+- Per-skill **history charts** — switch between XP and rank, and between 7 / 30 / 90-day and all-time ranges.
+- Light / dark mode.
+
+> Designs for possible future features (account comparison, boss kill-count tracking, and more) live in [`docs/features/`](docs/features/).
+
 ## Tech stack
- 
-### Backend
- 
+
+**Backend**
 - ASP.NET Core 8 Web API (C#)
-- Entity Framework Core 8
-- PostgreSQL
+- Entity Framework Core 8 + PostgreSQL
 - ASP.NET Identity + JWT auth
 - `IHostedService` for background polling
 - xUnit + FluentAssertions for tests
-### Frontend
- 
-- Next.js 16 + TypeScript
+
+**Frontend**
+- Next.js 16 (App Router) + TypeScript
 - Tailwind v4
 - TanStack Query for API calls + caching
-- Recharts for the XP-over-time chart
-### Infrastructure
- 
+- Recharts for the history charts
+
+**Infrastructure**
 - Docker + docker-compose locally
 - Azure Container Apps (API + frontend)
-- Azure Database for PostgreSQL Flexible Server (burstable B1ms)
+- Azure Database for PostgreSQL Flexible Server (Burstable B1ms)
 - GitHub Container Registry (GHCR) for Docker images
-- GitHub Actions for CI/CD (Week 8)
+- GitHub Actions for CI/CD
+
 ## Data model
- 
-Five tables.
- 
+
+Five tables (plus the ASP.NET Identity tables).
+
 - **Users** — handled by ASP.NET Identity (`Id`, `Email`, `PasswordHash`, etc.)
 - **TrackedAccounts** — `Id`, `UserId` (FK), `OsrsUsername`, `DisplayName`, `CreatedAt`, `LastPolledAt`
 - **Skills** — `Id`, `Name`, `DisplayOrder` — seeded once at startup with 24 rows (an `Overall` aggregate plus the 23 skills) in hiscore order
 - **XpSnapshots** — `Id`, `TrackedAccountId` (FK), `SkillId` (FK), `Xp`, `Level`, `Rank`, `CapturedAt`
-- **PollLog** *(optional but useful)* — `Id`, `TrackedAccountId` (FK), `AttemptedAt`, `Success`, `ErrorMessage`
-The `XpSnapshots` table will be the biggest. Index on `(TrackedAccountId, SkillId, CapturedAt DESC)` so "show me the chart for one skill" stays fast.
- 
+- **PollLog** — `Id`, `TrackedAccountId` (FK), `AttemptedAt`, `Success`, `ErrorMessage`
+
+`XpSnapshots` is the biggest table. It has a composite index on `(TrackedAccountId, SkillId, CapturedAt)` so "show me the chart for one skill" stays fast.
+
 ## API surface
- 
+
 - `POST /api/auth/register` — email + password → user created + JWT returned
 - `POST /api/auth/login` — credentials → JWT
 - `GET /api/auth/me` — current user info
-- `POST /api/accounts` — body has `osrsUsername`, `displayName` → validates the username exists on Hiscores, creates `TrackedAccount`, takes initial snapshot
-- `GET /api/accounts` — list current user's tracked accounts
+- `POST /api/accounts` — body has `osrsUsername`, `displayName` → validates the username exists on Hiscores, creates the account, takes an initial snapshot
+- `GET /api/accounts` — list the current user's tracked accounts
 - `DELETE /api/accounts/{id}` — remove an account
 - `GET /api/accounts/{id}/skills` — current state of all skills (latest snapshot per skill)
-- `GET /api/accounts/{id}/skills/{skillId}/history?days=30` — snapshots over a period for the chart
+- `GET /api/accounts/{id}/skills/{skillId}/history?days=30` — snapshots over a period, for the chart
+- `GET /api/accounts/{id}/summary` — dashboard stats (total & combat level, XP gained today/this week, fastest skill, last level-up)
+- `POST /api/accounts/{id}/refresh` — poll the Hiscores on demand (short cooldown; returns `429` if called too soon)
 - `GET /health` — liveness + database connectivity (used by Container Apps probes)
 - `GET /api/info` — app version and environment
+
 ## Background poller
- 
+
 One `IHostedService`. Runs on a loop:
- 
+
 1. Find every `TrackedAccount` whose `LastPolledAt` is older than the polling interval (default 6 hours).
 2. For each one, with a small delay between requests (2 seconds):
    - Fetch the Hiscores.
-   - Parse the response into 23 skill rows.
+   - Parse the response into a snapshot per skill.
    - Bulk-insert into `XpSnapshots`.
    - Update `LastPolledAt`.
-   - Log to `PollLog`.
+   - Log the attempt to `PollLog`.
 3. Sleep until the next cycle.
-Six hours is a sensible default — captures meaningful XP gains without hammering Jagex's servers. Configurable via `appsettings.json`.
- 
-## Roadmap
- 
-Eight focused weekends. Each ends with something demonstrable.
- 
-### Weekend 1 — Local backend foundation
- 
-- New solution: `OsrsTracker.Api`, `OsrsTracker.Domain`, `OsrsTracker.Tests`
-- EF Core wired to local Postgres (Postgres running in Docker)
-- Skills, TrackedAccounts, XpSnapshots tables with migrations
-- Skill seeder runs at startup
-- One endpoint working end-to-end: `POST /api/accounts` (no auth yet) → fetches Hiscores → saves snapshot
-- A few xUnit tests around the Hiscores parser
-**Goal:** you can `curl` an endpoint and see XP data appear in your local database.
- 
-### Weekend 2 — Auth and ownership
- 
-- ASP.NET Identity wired up with JWT
-- Register / login / me endpoints
-- `TrackedAccount` linked to `UserId`, all account endpoints scoped to the current user
-- Tests: registration, login, accessing another user's account returns 403
-**Goal:** you can register two users, and they can't see each other's accounts.
- 
-### Weekend 3 — Background polling
- 
-- `IHostedService` polling loop
-- Polite delays, error handling for 404/503
-- `PollLog` table populated
-- Configurable poll interval via `appsettings.json`
-- Tests for the "which accounts are due?" logic
-**Goal:** start the API, leave it running, and watch new snapshots appear every 6 hours.
- 
-### Weekend 4 — Read endpoints + frontend bootstrap
- 
-- `GET /api/accounts/{id}/skills` (current state)
-- `GET /api/accounts/{id}/skills/{skillId}/history` (chart data)
-- Next.js + TypeScript + Tailwind project alongside the API
-- Auth flow in the frontend: login → JWT in localStorage → axios/fetch interceptor
-- Skeleton pages: Login, Register, Account List, Account Detail
-**Goal:** you can log in via the React app and see an empty account list.
- 
-### Weekend 5 — Frontend properly
- 
-- Account list page with "Add account" form
-- Account detail page: table of 23 skills with current level/XP/rank
-- Per-skill chart with Recharts (XP and rank over time, with selectable time ranges)
-- "Last polled at" display
-- TanStack Query for caching and refetching
-**Goal:** real, usable UI. You can add your own RSN and see your skills.
- 
-### Weekend 6 — Dockerise everything
- 
-- Multi-stage Dockerfile for the API
-- Dockerfile for the frontend (multi-stage build → Next.js standalone server on Node)
-- `docker-compose.yml` with API + Postgres + frontend
-- One command starts the whole thing
-- README updated with "how to run locally"
-**Goal:** anyone (including you in six months) can clone the repo and `docker compose up` and have it working.
- 
-### Weekend 7 — Deploy to Azure
- 
-- GitHub Container Registry (GHCR) — push the API and frontend images
-- Azure Database for PostgreSQL Flexible Server — provisioned with the lowest burstable tier
-- Azure Container Apps — deploy both the API and frontend images, wire env vars (connection string, JWT secret) via secrets
-- One real public URL, working end-to-end
-**Goal:** you can send a friend a link, they can sign up, and it works.
- 
-### Weekend 8 — CI/CD
- 
-- GitHub Actions: PR workflow runs `dotnet build` + `dotnet test` (with coverage) and `npm run lint` + `npm run build`
-- Deploy workflow: builds the Docker images, pushes them to GHCR, and rolls out new Azure Container Apps revisions for both the API and frontend
-- An auto version-bump workflow opens a PR bumping the patch version on each merge; merging that PR triggers the deploy
-- Branch protection (ruleset) on main requiring the checks to pass
-- README badges showing CI + deploy status
-**Goal:** merge a release → minutes later → live in production. No manual steps.
- 
-After weekend 8 the project is **done**. Don't reach for features until the foundation is genuinely solid.
- 
-## Definition of "genuinely solid"
- 
-Before calling the foundation done, it should have:
- 
-- **Tests that actually run in CI.** Not "I wrote some" — the pipeline fails if they break.
-- **A real README.** Architecture diagram, how to run locally, environment variables documented, deploy instructions.
-- **Migrations, not `dotnet ef database drop`.** New schema changes go through migrations from day one.
-- **Secrets in secret stores**, not in `appsettings.json` checked into git.
-- **Logging that's useful.** Structured logs via ASP.NET Core's built-in `ILogger` so you can diagnose the inevitable production issue.
-- **Health checks.** `/health` endpoint returning DB connectivity. Container Apps uses this.
-- **A rate-limited Hiscores client** with retry on 503, not "fire-and-hope".
-- **CORS configured properly** — not `AllowAnyOrigin()` in production.
-## Budget
- 
-- Azure Container Apps (API + frontend): free tier covers casual use comfortably
-- PostgreSQL Burstable B1ms: free for 12 months on a new Azure account, then ~£10/month
-- GitHub Container Registry (GHCR): free for the images this project pushes
-- Domain (optional): ~£10/year
-**Realistic monthly cost: £0 for the first year, ~£15/month after.**
- 
-## Live demo
- 
-**[https://osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io](https://osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io)**
- 
-Register an account, add your OSRS username, and the background poller will build up XP history every 6 hours.
- 
-## Getting started (local)
- 
+
+Six hours is a sensible default — it captures meaningful XP gains without hammering Jagex's servers. Configurable via `appsettings.json`. The same poll logic backs the manual **Refresh** endpoint.
+
+## Engineering practices
+
+The project aims to be a real service, not a throwaway. What's in place:
+
+- **Tests in CI.** xUnit unit + integration tests run on every PR; the pipeline fails if they break.
+- **Migrations, not drop-and-recreate.** Schema changes go through EF Core migrations, applied automatically on API startup.
+- **Secrets out of git.** The JWT key and DB connection string come from environment/secrets; local dev uses a git-ignored `appsettings.Development.Local.json`.
+- **Structured logging** via ASP.NET Core's built-in `ILogger`.
+- **Health checks.** `/health` reports database connectivity; Container Apps uses it for probes.
+- **A resilient Hiscores client.** Polly retries transient failures, with a delay between accounts so we don't hammer Jagex.
+- **CORS locked down** to the known frontend origin(s), not `AllowAnyOrigin()`.
+
+## Running locally
+
+**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) for everything; plus [Node.js 20](https://nodejs.org/) and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8) only if you run the frontend/API outside Docker.
+
+### Quickest — everything in Docker
+
 ```bash
 git clone https://github.com/peterwb1/osrs-xp-tracker.git
 cd osrs-xp-tracker
 docker compose up --build
 ```
- 
-Open [http://localhost:3000](http://localhost:3000).
- 
-The first `--build` takes a few minutes (downloading base images, compiling .NET, building Next.js). Subsequent `docker compose up` runs are fast.
- 
-To wipe the database and start fresh:
+
+Open [http://localhost:3000](http://localhost:3000) (the API is at [http://localhost:8080](http://localhost:8080)). The first `--build` takes a few minutes (base images, compiling .NET, building Next.js); later runs are fast.
+
+Wipe the database and start fresh:
 ```bash
 docker compose down -v
 ```
- 
+
+### Working on the frontend (hot reload)
+
+Run the database + API in Docker, and the Next.js dev server on your machine:
+
+```bash
+docker compose up db api        # terminal 1
+```
+
+```bash
+cd web                          # terminal 2
+npm install
+npm run dev
+```
+
+The frontend runs at [http://localhost:3000](http://localhost:3000) with hot reload. `web/.env.local` already points it at the local API (`http://localhost:8080`).
+
+### Running the API natively
+
+```bash
+# one-time: create your local JWT config from the example
+cp api/OsrsTracker.Api/appsettings.Development.Local.json.example api/OsrsTracker.Api/appsettings.Development.Local.json
+# then set a JWT key (any 32+ character string) inside that file
+
+docker compose up db db-test    # database(s) only
+cd api
+dotnet run --project OsrsTracker.Api/OsrsTracker.Api.csproj
+```
+
+More detail — all the options, running tests, and working with migrations — is in [`docs/dev.md`](docs/dev.md).
+
 ### Environment variables
- 
-The API reads the following at runtime. For local development these are set in `docker-compose.yml`. For production they are set as Azure Container Apps environment variables / secrets.
- 
+
+The API reads these at runtime. Locally they're set in `docker-compose.yml`; in production they're Azure Container Apps environment variables / secrets.
+
 | Variable | Description |
 |---|---|
 | `ConnectionStrings__Default` | PostgreSQL connection string |
@@ -208,21 +165,39 @@ The API reads the following at runtime. For local development these are set in `
 | `Jwt__Issuer` | JWT issuer identifier |
 | `Frontend__Url` | Production frontend origin (for CORS) |
 | `ASPNETCORE_ENVIRONMENT` | `Development` or `Production` |
- 
-Copy `api/OsrsTracker.Api/appsettings.Development.Local.json.example` to `appsettings.Development.Local.json` and fill in the JWT values to run the API outside Docker.
- 
+
+## Deployment
+
+CI/CD runs on GitHub Actions:
+
+- **`pr.yml`** — on every PR: `dotnet build` + `dotnet test` (with coverage) and `npm run lint` + `npm run build`.
+- **`deploy.yml`** — builds the Docker images, pushes them to GHCR, and rolls out new Azure Container Apps revisions for the API and frontend. It authenticates to Azure via OIDC (no long-lived secret).
+- **`bump.yml`** — on a merge to main, opens a PR bumping the patch version; merging that PR triggers a deploy.
+
+The full one-time Azure setup (resource group, Postgres, Container Apps, wiring) is in [`docs/azure-deployment-guide.md`](docs/azure-deployment-guide.md).
+
+### Cost
+
+| Resource | Tier | Cost |
+|---|---|---|
+| Container Apps (API + frontend) | Consumption | ~£0 at low traffic (generous free grant) |
+| PostgreSQL Flexible Server | Burstable B1ms | ~£10/month (free for the first 12 months only on a brand-new Azure account) |
+| Container Apps environment / GHCR | — | Free |
+
+The database is the main ongoing cost. `az group delete --name osrs-tracker-rg --yes` stops all billing.
+
 ## Project structure
 
 ```
 osrs-xp-tracker/
 ├── api/                       # ASP.NET Core Web API (.NET 8)
 │   ├── OsrsTracker.Api/       #   controllers, services (polling), data, DTOs, Program.cs
-│   ├── OsrsTracker.Domain/    #   entities, hiscores parser (no framework dependencies)
+│   ├── OsrsTracker.Domain/    #   entities, hiscores parser, pure calculations (no framework deps)
 │   ├── OsrsTracker.Tests/     #   xUnit unit + integration tests
 │   └── OsrsTracker.sln
 ├── web/                       # Next.js 16 frontend (App Router, TypeScript)
-│   ├── app/                   #   routes: login, register, accounts, accounts/[id], compare
-│   ├── components/            #   charts, theme toggle, reusable UI
+│   ├── app/                   #   routes: login, register, accounts, account detail, skill history
+│   ├── components/            #   dashboard, charts, theme toggle, reusable UI
 │   ├── lib/                   #   api client, auth, query keys, helpers
 │   └── Dockerfile
 ├── docs/                      # deployment guide, local dev guide, future-feature designs
