@@ -9,6 +9,8 @@ This is a personal learning project, deliberately scoped small so it can be **fi
 
 **Live demo:** [osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io](https://osrs-tracker-frontend.wittyground-486493c3.uksouth.azurecontainerapps.io)
 
+**API docs (Swagger):** [osrs-tracker-api.wittyground-486493c3.uksouth.azurecontainerapps.io/swagger](https://osrs-tracker-api.wittyground-486493c3.uksouth.azurecontainerapps.io/swagger)
+
 ## Features
 
 **Accounts & auth**
@@ -64,6 +66,8 @@ Five tables (plus the ASP.NET Identity tables).
 `XpSnapshots` is the biggest table. It has a composite index on `(TrackedAccountId, SkillId, CapturedAt)` so "show me the chart for one skill" stays fast.
 
 ## API surface
+
+Browse and try these interactively at [`/swagger`](https://osrs-tracker-api.wittyground-486493c3.uksouth.azurecontainerapps.io/swagger) — log in via `POST /api/auth/login`, copy the token, click **Authorize**, and the protected endpoints become callable as your account.
 
 - `POST /api/auth/register` — email + password → user created + JWT returned
 - `POST /api/auth/login` — credentials → JWT
