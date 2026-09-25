@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using OsrsTracker.Api.Data;
 using OsrsTracker.Api.Hiscores;
@@ -13,6 +14,10 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Git-ignored local overrides (e.g. the dev JWT key) for running the API
+// natively outside Docker, where docker-compose's env vars aren't available.
+builder.Configuration.AddJsonFile("appsettings.Development.Local.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddControllers();
 
@@ -70,7 +75,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.AddHttpClient<IHiscoresClient, HiscoresClient>()
     .AddTransientHttpErrorPolicy(p =>
@@ -110,7 +115,8 @@ builder.Services.Configure<PollingOptions>(builder.Configuration.GetSection("Pol
 builder.Services.AddScoped<IAccountPoller, AccountPoller>();
 builder.Services.AddHostedService<PollingService>();
 
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>();
 
 var frontendUrl = builder.Configuration["Frontend:Url"];
 builder.Services.AddCors(options =>

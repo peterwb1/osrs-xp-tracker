@@ -35,7 +35,7 @@ This is a personal learning project, deliberately scoped small so it can be **fi
 
 **Backend**
 - ASP.NET Core 8 Web API (C#)
-- Entity Framework Core 8 + PostgreSQL
+- Entity Framework Core 8 + SQL Server
 - ASP.NET Identity + JWT auth
 - `IHostedService` for background polling
 - xUnit + FluentAssertions for tests
@@ -49,7 +49,7 @@ This is a personal learning project, deliberately scoped small so it can be **fi
 **Infrastructure**
 - Docker + docker-compose locally
 - Azure Container Apps (API + frontend)
-- Azure Database for PostgreSQL Flexible Server (Burstable B1ms)
+- Azure SQL Database (Basic tier)
 - GitHub Container Registry (GHCR) for Docker images
 - GitHub Actions for CI/CD
 
@@ -111,49 +111,42 @@ The project aims to be a real service, not a throwaway. What's in place:
 
 ## Running locally
 
-**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) for everything; plus [Node.js 20](https://nodejs.org/) and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8) only if you run the frontend/API outside Docker.
+**Prerequisites:** [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8) and [SQL Server LocalDB](https://learn.microsoft.com/sql/database-engine/configure-windows/sql-server-express-localdb) (ships with Visual Studio, or install standalone) for native dev; [Node.js 20](https://nodejs.org/) for the frontend. [Docker Desktop](https://www.docker.com/products/docker-desktop/) is only needed for the full-stack-in-Docker option below (e.g. on macOS/Linux, where LocalDB isn't available).
 
-### Quickest — everything in Docker
-
-```bash
-git clone https://github.com/peterwb1/osrs-xp-tracker.git
-cd osrs-xp-tracker
-docker compose up --build
-```
-
-Open [http://localhost:3000](http://localhost:3000) (the API is at [http://localhost:8080](http://localhost:8080)). The first `--build` takes a few minutes (base images, compiling .NET, building Next.js); later runs are fast.
-
-Wipe the database and start fresh:
-```bash
-docker compose down -v
-```
-
-### Working on the frontend (hot reload)
-
-Run the database + API in Docker, and the Next.js dev server on your machine:
-
-```bash
-docker compose up db api        # terminal 1
-```
-
-```bash
-cd web                          # terminal 2
-npm install
-npm run dev
-```
-
-The frontend runs at [http://localhost:3000](http://localhost:3000) with hot reload. `web/.env.local` already points it at the local API (`http://localhost:8080`).
-
-### Running the API natively
+### Fastest — native dev with LocalDB
 
 ```bash
 # one-time: create your local JWT config from the example
 cp api/OsrsTracker.Api/appsettings.Development.Local.json.example api/OsrsTracker.Api/appsettings.Development.Local.json
 # then set a JWT key (any 32+ character string) inside that file
 
-docker compose up db db-test    # database(s) only
 cd api
 dotnet run --project OsrsTracker.Api/OsrsTracker.Api.csproj
+```
+
+The API applies migrations and seeds skills against `(localdb)\MSSQLLocalDB` automatically on startup — no container needed. In another terminal:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) (the API is at [http://localhost:8080](http://localhost:8080)).
+
+### Full stack in Docker (cross-platform)
+
+```bash
+git clone https://github.com/peterwb1/osrs-xp-tracker.git
+cd osrs-xp-tracker
+docker compose --profile full up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000) (the API is at [http://localhost:8080](http://localhost:8080)). The first `--build` takes a few minutes (base images, compiling .NET, building Next.js); later runs are fast.
+
+Wipe the database and start fresh:
+```bash
+docker compose --profile full down -v
 ```
 
 More detail — all the options, running tests, and working with migrations — is in [`docs/dev.md`](docs/dev.md).
@@ -164,7 +157,7 @@ The API reads these at runtime. Locally they're set in `docker-compose.yml`; in 
 
 | Variable | Description |
 |---|---|
-| `ConnectionStrings__Default` | PostgreSQL connection string |
+| `ConnectionStrings__Default` | SQL Server connection string |
 | `Jwt__Key` | Secret key for signing JWTs (32+ chars) |
 | `Jwt__Issuer` | JWT issuer identifier |
 | `Frontend__Url` | Production frontend origin (for CORS) |
@@ -178,14 +171,14 @@ CI/CD runs on GitHub Actions:
 - **`deploy.yml`** — builds the Docker images, pushes them to GHCR, and rolls out new Azure Container Apps revisions for the API and frontend. It authenticates to Azure via OIDC (no long-lived secret).
 - **`bump.yml`** — on a merge to main, opens a PR bumping the patch version; merging that PR triggers a deploy.
 
-The full one-time Azure setup (resource group, Postgres, Container Apps, wiring) is in [`docs/azure-deployment-guide.md`](docs/azure-deployment-guide.md).
+The full one-time Azure setup (resource group, Azure SQL, Container Apps, wiring) is in [`docs/azure-deployment-guide.md`](docs/azure-deployment-guide.md).
 
 ### Cost
 
 | Resource | Tier | Cost |
 |---|---|---|
 | Container Apps (API + frontend) | Consumption | ~£0 at low traffic (generous free grant) |
-| PostgreSQL Flexible Server | Burstable B1ms | ~£10/month (free for the first 12 months only on a brand-new Azure account) |
+| Azure SQL Database | Basic (5 DTU) | ~£4/month (verify current pricing — no free-tier equivalent to Postgres's 12-month burstable credit) |
 | Container Apps environment / GHCR | — | Free |
 
 The database is the main ongoing cost. `az group delete --name osrs-tracker-rg --yes` stops all billing.

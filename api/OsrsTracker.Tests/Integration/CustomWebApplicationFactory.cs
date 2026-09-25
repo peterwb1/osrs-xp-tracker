@@ -10,9 +10,9 @@ namespace OsrsTracker.Tests.Integration;
 
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
-    // Connection string pointing at the test DB container (port 5433)
+    // Connection string pointing at the test DB container (port 1434)
     private const string TestConnectionString =
-        "Host=localhost;Port=5433;Database=osrstracker_test;Username=osrs;Password=osrs";
+        "Server=localhost,1434;Database=osrstracker_test;User Id=sa;Password=LocalDevTest#2026!;TrustServerCertificate=True";
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -36,7 +36,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 services.Remove(dbDescriptor);
 
             services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(TestConnectionString));
+                options.UseSqlServer(TestConnectionString));
 
             // Replace real HiscoresClient with a fake so tests don't hit the OSRS API
             var hiscoresDescriptor = services.SingleOrDefault(d =>

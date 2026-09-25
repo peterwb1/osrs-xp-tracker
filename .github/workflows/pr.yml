@@ -10,22 +10,28 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      postgres:
-        image: postgres:16-alpine
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
         env:
-          POSTGRES_DB: osrstracker_test
-          POSTGRES_USER: osrs
-          POSTGRES_PASSWORD: osrs
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "LocalDevTest#2026!"
+          MSSQL_PID: "Developer"
         ports:
-          - 5433:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
+          - 1434:1433
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Wait for SQL Server to be ready
+        run: |
+          for i in $(seq 1 30); do
+            docker exec $(docker ps -q --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest") \
+              /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "LocalDevTest#2026!" -C -N -Q "SELECT 1" \
+              && echo "SQL Server ready" && exit 0
+            echo "Waiting for SQL Server... ($i/30)"
+            sleep 2
+          done
+          echo "SQL Server did not become ready in time" && exit 1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

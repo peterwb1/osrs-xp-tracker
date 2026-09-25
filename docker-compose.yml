@@ -1,27 +1,30 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: ["full"]
     environment:
-      POSTGRES_DB: osrstracker
-      POSTGRES_USER: osrs
-      POSTGRES_PASSWORD: osrs
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "LocalDev#2026!"
+      MSSQL_PID: "Developer"
     ports:
-      - "5432:5432"
+      - "1433:1433"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mssql_data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U osrs -d osrstracker"]
-      interval: 5s
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -N -Q 'SELECT 1' -b -o /dev/null || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
   api:
+    profiles: ["full"]
     build:
       context: ./api
       dockerfile: OsrsTracker.Api/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__Default=Host=db;Port=5432;Database=osrstracker;Username=osrs;Password=osrs
+      - ConnectionStrings__Default=Server=db,1433;Database=osrstracker;User Id=sa;Password=LocalDev#2026!;TrustServerCertificate=True
       - Jwt__Key=dev-only-secret-key-replace-in-production-min32chars
       - Jwt__Issuer=osrs-tracker-dev
     ports:
@@ -31,6 +34,7 @@ services:
         condition: service_healthy
 
   frontend:
+    profiles: ["full"]
     build:
       context: ./web
       args:
@@ -41,18 +45,19 @@ services:
       - api
 
   db-test:
-    image: postgres:16-alpine
+    image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
-      POSTGRES_DB: osrstracker_test
-      POSTGRES_USER: osrs
-      POSTGRES_PASSWORD: osrs
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "LocalDevTest#2026!"
+      MSSQL_PID: "Developer"
     ports:
-      - "5433:5432"
+      - "1434:1433"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U osrs -d osrstracker_test"]
-      interval: 5s
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -N -Q 'SELECT 1' -b -o /dev/null || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
 volumes:
-  postgres_data:
+  mssql_data:
