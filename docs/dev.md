@@ -2,18 +2,35 @@
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — runs the database, API, and frontend
-- [Node.js 20](https://nodejs.org/) — only needed if running the frontend outside Docker
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8) — only needed if running the API outside Docker
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8) — to run the API
+- [SQL Server LocalDB](https://learn.microsoft.com/sql/database-engine/configure-windows/sql-server-express-localdb) — ships with Visual Studio, or install standalone. This is the default local database, no container needed.
+- [Node.js 20](https://nodejs.org/) — to run the frontend
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — only needed for the full-stack-in-Docker option, integration tests (`db-test`), or on macOS/Linux where LocalDB isn't available
 
 ---
 
-## Option A — Full stack in Docker (simplest)
+## Option A — Native dev with LocalDB (simplest, Windows)
 
-Starts everything: PostgreSQL, the .NET API, and the Next.js frontend.
+Runs the API directly against `(localdb)\MSSQLLocalDB` — no Docker required for the database or API.
 
+First, create your local JWT config file (one-time setup):
 ```bash
-docker compose up --build
+cp api/OsrsTracker.Api/appsettings.Development.Local.json.example \
+   api/OsrsTracker.Api/appsettings.Development.Local.json
+```
+Edit `appsettings.Development.Local.json` and set a JWT key (any string 32+ characters).
+
+Then run the API — it applies migrations and seeds skills against LocalDB automatically on startup:
+```bash
+cd api
+dotnet run --project OsrsTracker.Api/OsrsTracker.Api.csproj
+```
+
+**Terminal 2** — start the frontend:
+```bash
+cd web
+npm install
+npm run dev
 ```
 
 | Service | URL |
@@ -21,27 +38,37 @@ docker compose up --build
 | Frontend | http://localhost:3000 |
 | API | http://localhost:8080 |
 
+---
+
+## Option B — Full stack in Docker (cross-platform)
+
+Starts everything: SQL Server, the .NET API, and the Next.js frontend. Use this on macOS/Linux, or if you don't want to install LocalDB.
+
+```bash
+docker compose --profile full up --build
+```
+
 The first `--build` takes a few minutes. Subsequent runs are fast (layers are cached).
 
 To stop:
 ```bash
-docker compose down
+docker compose --profile full down
 ```
 
 To wipe the database and start completely fresh:
 ```bash
-docker compose down -v
+docker compose --profile full down -v
 ```
 
 ---
 
-## Option B — Database + API in Docker, frontend with `npm run dev`
+## Option C — Database + API in Docker, frontend with `npm run dev`
 
-Use this when actively working on the frontend — you get hot reload instead of rebuilding the Docker image on every change.
+Use this when actively working on the frontend but don't have LocalDB installed — you get hot reload instead of rebuilding the Docker image on every change.
 
 **Terminal 1** — start the database and API:
 ```bash
-docker compose up db api
+docker compose --profile full up db api
 ```
 
 **Terminal 2** — start the frontend dev server:
@@ -57,42 +84,9 @@ Frontend is at http://localhost:3000 with hot reload. API is at http://localhost
 
 ---
 
-## Option C — Everything outside Docker (database still in Docker)
-
-Use this when actively working on both the API and frontend simultaneously.
-
-**Terminal 1** — start only the databases:
-```bash
-docker compose up db db-test
-```
-
-**Terminal 2** — start the API:
-
-First, create your local JWT config file (one-time setup):
-```bash
-cp api/OsrsTracker.Api/appsettings.Development.Local.json.example \
-   api/OsrsTracker.Api/appsettings.Development.Local.json
-```
-Edit `appsettings.Development.Local.json` and set a JWT key (any string 32+ characters).
-
-Then run the API:
-```bash
-cd api
-dotnet run --project OsrsTracker.Api/OsrsTracker.Api.csproj
-```
-
-**Terminal 3** — start the frontend:
-```bash
-cd web
-npm install
-npm run dev
-```
-
----
-
 ## Running tests
 
-Integration tests need the test database running:
+Integration tests need the test database running (this always uses a Docker SQL Server container, regardless of which option you use above for the API):
 ```bash
 docker compose up db-test
 ```
@@ -114,10 +108,10 @@ dotnet test --filter "Category!=Integration"
 
 ```bash
 # Rebuild only the API container (after backend changes)
-docker compose up --build api
+docker compose --profile full up --build api
 
 # Rebuild only the frontend container
-docker compose up --build frontend
+docker compose --profile full up --build frontend
 
 # View API logs
 docker compose logs api --follow
@@ -126,7 +120,7 @@ docker compose logs api --follow
 docker compose logs --follow
 
 # Apply new database migrations (runs automatically on API startup)
-# If you need to run them manually:
+# If you need to run them manually (requires LocalDB running):
 cd api
 dotnet ef database update --project OsrsTracker.Api/OsrsTracker.Api.csproj
 
@@ -143,4 +137,4 @@ dotnet ef migrations add YourMigrationName --project OsrsTracker.Api/OsrsTracker
 | `NEXT_PUBLIC_API_URL` | `web/.env.local` | API base URL for the frontend |
 | `Jwt__Key` | `appsettings.Development.Local.json` | JWT signing key (dev only) |
 | `Jwt__Issuer` | `appsettings.Development.Local.json` | JWT issuer |
-| `ConnectionStrings__Default` | `appsettings.json` | PostgreSQL connection string |
+| `ConnectionStrings__Default` | `appsettings.json` | SQL Server (LocalDB) connection string |

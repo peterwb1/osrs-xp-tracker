@@ -88,38 +88,46 @@ Write it down — you'll need it in Step 8.
 
 ---
 
-## Step 4 — Create the PostgreSQL Database
+## Step 4 — Create the Azure SQL Database
 
 ```bash
-az postgres flexible-server create \
+az sql server create \
   --resource-group osrs-tracker-rg \
-  --name osrs-tracker-db \
+  --name osrs-tracker-sql \
   --admin-user osrs \
   --admin-password "YOUR_DB_PASSWORD" \
-  --sku-name Standard_B1ms \
-  --tier Burstable \
-  --version 16 \
-  --location uksouth \
-  --public-access 0.0.0.0
+  --location uksouth
 ```
 
 Replace `YOUR_DB_PASSWORD` with the password you chose in the prerequisites.
 
-This takes ~5 minutes. Then create the database inside the server:
+This takes about a minute. Then create the database on the server (Basic tier is the cheapest persistent option — plenty for a demo's traffic):
 
 ```bash
-az postgres flexible-server db create \
+az sql db create \
   --resource-group osrs-tracker-rg \
-  --server-name osrs-tracker-db \
-  --database-name osrstracker
+  --server osrs-tracker-sql \
+  --name osrstracker \
+  --edition Basic
+```
+
+Azure SQL blocks all connections by default — allow Azure services (including your Container App) through the firewall:
+
+```bash
+az sql server firewall-rule create \
+  --resource-group osrs-tracker-rg \
+  --server osrs-tracker-sql \
+  --name AllowAzureServices \
+  --start-ip-address 0.0.0.0 \
+  --end-ip-address 0.0.0.0
 ```
 
 Your connection string (save this — you need it in Step 6):
 ```
-Host=osrs-tracker-db.postgres.database.azure.com;Port=5432;Database=osrstracker;Username=osrs;Password=YOUR_DB_PASSWORD;Ssl Mode=Require
+Server=tcp:osrs-tracker-sql.database.windows.net,1433;Database=osrstracker;User Id=osrs;Password=YOUR_DB_PASSWORD;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30
 ```
 
-> **Why `Ssl Mode=Require`?** Azure PostgreSQL enforces TLS on all connections. Without it the API will fail to connect.
+> **Why `Encrypt=True`?** Azure SQL Database enforces TLS on all connections. Without it the API will fail to connect.
 
 ---
 
@@ -181,7 +189,7 @@ az containerapp create \
   --min-replicas 1 \
   --max-replicas 3 \
   --secrets \
-    "db-conn=Host=osrs-tracker-db.postgres.database.azure.com;Port=5432;Database=osrstracker;Username=osrs;Password=YOUR_DB_PASSWORD;Ssl Mode=Require" \
+    "db-conn=Server=tcp:osrs-tracker-sql.database.windows.net,1433;Database=osrstracker;User Id=osrs;Password=YOUR_DB_PASSWORD;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30" \
     "jwt-key=YOUR_JWT_SECRET" \
   --env-vars \
     "ConnectionStrings__Default=secretref:db-conn" \
@@ -341,9 +349,9 @@ az group delete --name osrs-tracker-rg --yes
 | Resource | Tier | Est. cost |
 |---|---|---|
 | Container Apps (API + frontend) | Consumption plan | ~£0 at low traffic (generous free grant) |
-| PostgreSQL Flexible Server | Standard_B1ms | Free for 12 months on new accounts, then ~£10/month |
+| Azure SQL Database | Basic (5 DTU, 2GB) | ~£4/month (verify current pricing via the Azure Pricing Calculator — no 12-month free tier like Postgres Flexible Server has) |
 | Container Apps environment | — | Free |
 | GHCR image storage | Public repo | Free |
-| **Total** | | **£0 first year, ~£10/month after** |
+| **Total** | | **~£4/month** |
 
 To stop all billing immediately: `az group delete --name osrs-tracker-rg --yes`
